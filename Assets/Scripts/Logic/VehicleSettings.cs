@@ -24,8 +24,14 @@ namespace ArcadeVehicleController
         [SerializeField] private float m_SpringDamper;
 
         [Header("Power")]
+        [SerializeField][Range(0.0f, 50f)] private float m_PowerChargeScale;
+        [SerializeField][Range(0.0f, 60f)] private float m_BoostPowerT1;
+        [SerializeField][Range(0.0f, 60f)] private float m_BoostPowerT2;
+        [SerializeField][Range(0.0f, 60f)] private float m_BoostPowerT3;
+        [SerializeField][Range(0.0f, 60f)] private float m_BoostPowerT4;
         [SerializeField] private float m_AcceleratePower;
         [SerializeField] private float m_BrakesPower;
+        [SerializeField] private float m_ReversePower;
         [SerializeField] private float m_MaxSpeed;
         [SerializeField] private float m_MaxReverseSpeed;
 
@@ -52,8 +58,14 @@ namespace ArcadeVehicleController
         public float SpringStrength => m_SpringStrength;
         public float SpringDamper => m_SpringDamper;
 
+        public float PowerChargeScale => m_PowerChargeScale;
+        public float BoostPowerT1 => m_BoostPowerT1;
+        public float BoostPowerT2 => m_BoostPowerT2;
+        public float BoostPowerT3 => m_BoostPowerT3;
+        public float BoostPowerT4 => m_BoostPowerT4;
         public float AcceleratePower => m_AcceleratePower;
         public float BrakesPower => m_BrakesPower;
+        public float ReversePower => m_ReversePower;
         public float MaxSpeed => m_MaxSpeed;
         public float MaxReverseSpeed => m_MaxReverseSpeed;
 

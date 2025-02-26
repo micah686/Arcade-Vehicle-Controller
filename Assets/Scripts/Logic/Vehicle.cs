@@ -27,7 +27,11 @@ namespace ArcadeVehicleController
         private Dictionary<Wheel, SpringData> m_SpringDatas;
 
         private float m_SteerInput;
-        private float m_AccelerateInput;
+        private bool m_ReverseInput;
+        private float m_ReverseToFloat;
+        private bool m_AccelerateInput;
+        private float m_AccelerateToFloat;
+        private bool m_BrakeInput;
 
         public VehicleSettings Settings => m_Settings;
         public Vector3 Forward => m_Transform.forward;
@@ -54,9 +58,11 @@ namespace ArcadeVehicleController
 
             UpdateAccelerate();
 
-            UpdateBrakes();
-
             UpdateAirResistance();
+
+            UpdateRotation();
+
+            UpdateBrakeSlideBoost();
         }
 
         public void SetSteerInput(float steerInput)
@@ -64,9 +70,36 @@ namespace ArcadeVehicleController
             m_SteerInput = Mathf.Clamp(steerInput, -1.0f, 1.0f);
         }
 
-        public void SetAccelerateInput(float accelerateInput)
+        public void SetReverseInput(bool reverseInput)
         {
-            m_AccelerateInput = Mathf.Clamp(accelerateInput, -1.0f, 1.0f);
+            m_ReverseInput = reverseInput;
+            if (m_ReverseInput == true)
+            {
+                m_ReverseToFloat = -1.0f;
+            }
+            else
+            {
+                m_ReverseToFloat = 0.0f;
+            }
+        }
+
+        public void SetAccelerateInput(bool accelerateInput)
+        {
+            m_AccelerateInput = accelerateInput;
+            if (m_AccelerateInput == true)
+            {
+                m_AccelerateToFloat = 1.0f;
+            }
+            else
+            {
+                m_AccelerateToFloat = 0.0f;
+            }
+        }
+
+        public void SetBrakeInput(bool brakeinput)
+        {
+            m_BrakeInput = brakeinput;
+
         }
 
         public float GetSpringCurrentLength(Wheel wheel)
@@ -180,7 +213,15 @@ namespace ArcadeVehicleController
         private Vector3 GetWheelSlideDirection(Wheel wheel)
         {
             Vector3 forward = GetWheelRollDirection(wheel);
-            return Vector3.Cross(m_Transform.up, forward);
+
+            if (m_AccelerateInput == true)
+            {
+                return Vector3.Cross(m_Transform.up, forward);
+            }
+            else
+            {
+                return (m_Rigidbody.velocity.normalized);
+            }
         }
 
         private Vector3 GetWheelTorqueRelativePosition(Wheel wheel)
@@ -218,7 +259,17 @@ namespace ArcadeVehicleController
 
         private bool IsGrounded(Wheel wheel)
         {
-            return m_SpringDatas[wheel].CurrentLength < m_Settings.SpringRestLength;
+            int WheelIsGrounded = 0;
+            if (m_SpringDatas[wheel].CurrentLength < m_Settings.SpringRestLength)
+            {
+                WheelIsGrounded++;
+            }
+            else
+            {
+                WheelIsGrounded--;
+            }
+
+            return ((m_SpringDatas[wheel].CurrentLength < 100) && WheelIsGrounded >= 0);
         }
 
         private void UpdateSuspension()
@@ -258,27 +309,13 @@ namespace ArcadeVehicleController
                 m_Rigidbody.AddForceAtPosition(force, GetWheelTorquePosition(wheel));
             }
         }
-
+        float speedforAcc = 0;
         private void UpdateAccelerate()
         {
-            if (Mathf.Approximately(m_AccelerateInput, 0.0f))
+            if ((m_AccelerateInput = false) && (m_ReverseInput = false))
             {
                 return;
             }
-
-            float forwardSpeed = Vector3.Dot(m_Transform.forward, m_Rigidbody.velocity);
-            bool movingForward = forwardSpeed > 0.0f;
-            float speed = Mathf.Abs(forwardSpeed);
-
-            if (movingForward && speed > m_Settings.MaxSpeed)
-            {
-                return;
-            }
-            else if (!movingForward && speed > m_Settings.MaxReverseSpeed)
-            {
-                return;
-            }
-
             foreach (Wheel wheel in s_Wheels)
             {
                 if (!IsGrounded(wheel))
@@ -286,105 +323,126 @@ namespace ArcadeVehicleController
                     continue;
                 }
 
-                Vector3 position = GetWheelTorquePosition(wheel);
-                Vector3 wheelForward = GetWheelRollDirection(wheel);
-                m_Rigidbody.AddForceAtPosition(m_AccelerateInput * m_Settings.AcceleratePower * wheelForward, position);
-            }
-        }
+                Vector3 LocalVelocity = m_Rigidbody.transform.InverseTransformDirection(m_Rigidbody.velocity);
 
-        private void UpdateBrakes()
-        {
-            float forwardSpeed = Vector3.Dot(m_Transform.forward, m_Rigidbody.velocity);
-            float speed = Mathf.Abs(forwardSpeed);
-
-            float brakesRatio;
-
-            const float ALMOST_STOPPING_SPEED = 2.0f;
-            bool almostStopping = speed < ALMOST_STOPPING_SPEED;
-            if (almostStopping)
-            {
-                brakesRatio = 1.0f;
-            }
-            else
-            {
-                bool accelerateContrary =
-                    !Mathf.Approximately(m_AccelerateInput, 0.0f) &&
-                    Vector3.Dot(m_AccelerateInput * m_Transform.forward, m_Rigidbody.velocity) < 0.0f;
-                if (accelerateContrary)
+                if (LocalVelocity.x > 0 || LocalVelocity.z > 0)
                 {
-                    brakesRatio = 1.0f;
-                }
-                else if (Mathf.Approximately(m_AccelerateInput, 0.0f)) // No accelerate input
-                {
-                    brakesRatio = 0.1f;
+                    speedforAcc = Mathf.Abs(LocalVelocity.x) + Mathf.Abs(LocalVelocity.z);
                 }
                 else
                 {
+                    speedforAcc = LocalVelocity.x + LocalVelocity.z;
+                }
+
+                if (speedforAcc > m_Settings.MaxSpeed)
+                {
                     return;
                 }
-            }
-
-
-            foreach (Wheel wheel in s_BackWheels)
-            {
-                if (!IsGrounded(wheel))
+                else if (speedforAcc < m_Settings.MaxReverseSpeed)
                 {
-                    continue;
+                    return;
                 }
 
-                Vector3 springPosition = GetSpringPosition(wheel);
-                Vector3 rollDirection = GetWheelRollDirection(wheel);
-                float rollVelocity = Vector3.Dot(rollDirection, m_Rigidbody.GetPointVelocity(springPosition));
 
-                float desiredVelocityChange = -rollVelocity * m_Settings.BrakesPower * brakesRatio;
-                float desiredAcceleration = desiredVelocityChange / Time.fixedDeltaTime;
 
-                Vector3 force = desiredAcceleration * m_Settings.TireMass * rollDirection;
-                m_Rigidbody.AddForceAtPosition(force, GetWheelTorquePosition(wheel));
+                    Vector3 position = GetWheelTorquePosition(wheel);
+                    Vector3 wheelForward = GetWheelRollDirection(wheel);
+                    m_Rigidbody.AddForceAtPosition(m_AccelerateToFloat * m_Settings.AcceleratePower * wheelForward, position);
+                    m_Rigidbody.AddForceAtPosition(m_ReverseToFloat * m_Settings.ReversePower * wheelForward, position);
+                }
             }
-        }
 
         private void UpdateAirResistance()
         {
             m_Rigidbody.AddForce(m_BoxCollider.size.magnitude * m_Settings.AirResistance * -m_Rigidbody.velocity);
         }
 
-#if UNITY_EDITOR
-        private void OnDrawGizmos()
+        void UpdateRotation()
         {
-            if (Application.isPlaying)
+            RaycastHit hit;
+            if (Physics.Raycast(transform.position, -Vector3.up, out hit))
             {
-                Vector3 vehicleDown = -transform.up;
+                // Calculate rotation to align with ground normal
+                Quaternion targetRotation = Quaternion.FromToRotation(transform.up, hit.normal) * transform.rotation;
 
-                foreach (Wheel wheel in m_SpringDatas.Keys)
-                {
-                    // Spring
-                    Vector3 position = GetSpringPosition(wheel);
-                    Gizmos.color = Color.yellow;
-                    Gizmos.DrawLine(position, position + vehicleDown * m_Settings.SpringRestLength);
-                    Gizmos.color = Color.red;
-                    Gizmos.DrawCube(GetSpringHitPosition(wheel), Vector3.one * 0.08f);
+                Quaternion newRotation = Quaternion.Slerp(m_Rigidbody.rotation, targetRotation, Time.deltaTime * 5);
 
-                    // Wheel
-                    Gizmos.color = Color.blue;
-                    Gizmos.DrawRay(position, GetWheelRollDirection(wheel));
-                    Gizmos.color = Color.red;
-                    Gizmos.DrawRay(position, GetWheelSlideDirection(wheel));
-                }
+                // Apply rotation to Rigidbody
+                m_Rigidbody.MoveRotation(newRotation);
             }
             else
             {
-                if (m_Settings != null)
+                // If no ground detected, maintain current rotation
+                m_Rigidbody.MoveRotation(transform.rotation);
+            }
+
+
+
+        }
+        float PowerCharged = 0;
+        float BoostPowerLevel = 0;
+
+        void UpdateBrakeSlideBoost()
+        {
+            if (m_BrakeInput == true)
+            {
+                
+                foreach (Wheel wheel in s_Wheels)
                 {
-                    Gizmos.color = Color.green;
-                    Gizmos.DrawWireCube(transform.position,
-                        new Vector3(
-                            m_Settings.Width,
-                            m_Settings.Height,
-                            m_Settings.Length));
+                    if (!IsGrounded(wheel))
+                    {
+                        continue;
+                    }
+
+                   
+                    
+                    m_Rigidbody.velocity -= m_Rigidbody.velocity * GetWheelGripFactor(wheel)/m_Settings.BrakesPower * Time.fixedDeltaTime;
+                    PowerCharged += m_Rigidbody.velocity.magnitude * GetWheelGripFactor(wheel)/m_Settings.BrakesPower * m_Settings.PowerChargeScale * Time.fixedDeltaTime;
+                    Debug.Log("Boost is" + PowerCharged);
+
+                }
+
+
+
+            }
+            if ((m_BrakeInput == false) && PowerCharged > 2f)
+            {
+                foreach (Wheel wheel in s_Wheels)
+                {
+
+                    if (!IsGrounded(wheel))
+                    {
+                        continue;
+                    }
+
+                    if (PowerCharged < 20)
+                    {
+                        BoostPowerLevel = m_Settings.BoostPowerT1;
+                    }
+                    if ((PowerCharged >= 20) && (PowerCharged < 30))
+                    {
+                        BoostPowerLevel = m_Settings.BoostPowerT2;
+                    }
+                    if ((PowerCharged >= 30) && (PowerCharged < 40))
+                    {
+                        BoostPowerLevel = m_Settings.BoostPowerT3;
+                    }
+                    if (PowerCharged >= 40)
+                    {
+                        BoostPowerLevel = m_Settings.BoostPowerT4;
+                    }
+
+                    int WHEELS_COUNT = 4;
+                    Vector3 position = GetWheelTorquePosition(wheel);
+                    Vector3 wheelForward = GetWheelRollDirection(wheel);
+                    m_Rigidbody.AddForceAtPosition(BoostPowerLevel / WHEELS_COUNT * wheelForward, position, ForceMode.VelocityChange);
                 }
             }
+            if ((m_BrakeInput == false) && (BoostPowerLevel > 0))
+            {
+                BoostPowerLevel = 0;
+                PowerCharged = 0;
+            }
         }
-#endif
     }
 }

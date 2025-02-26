@@ -14,6 +14,7 @@ namespace ArcadeVehicleController
 
         private void Update()
         {
+
             if (Input.GetKeyDown(KeyCode.Escape))
             {
                 SceneManager.LoadScene(0);
@@ -23,7 +24,12 @@ namespace ArcadeVehicleController
 
             m_Vehicle.SetSteerInput(Input.GetAxis("Horizontal"));
 
-            m_Vehicle.SetAccelerateInput(Input.GetAxis("Vertical"));
+            m_Vehicle.SetAccelerateInput(Input.GetKey(KeyCode.Space));
+
+            m_Vehicle.SetBrakeInput(Input.GetKey(KeyCode.LeftControl));
+
+            m_Vehicle.SetReverseInput(Input.GetKey(KeyCode.S));
+
         }
     }
 }
